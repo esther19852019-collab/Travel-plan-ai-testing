@@ -82,3 +82,66 @@ def test_get_deleted_trip():
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Trip not found"
+
+# Test for invalid input data
+def test_create_trip_invalid_travelers():
+    response = client.post(
+        "/trips",
+        json={
+            "destination": "Paris",
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-05",
+            "travelers": 0,
+            "budget": 1000,
+            "interests": ["food"]
+        }
+    )
+
+    assert response.status_code == 422
+
+# Test for missing required fields
+def test_create_trip_missing_destination():
+    response = client.post(
+        "/trips",
+        json={
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-05",
+            "travelers": 2,
+            "budget": 1000,
+            "interests": ["food"],
+        },
+    )
+
+    assert response.status_code == 422
+
+# Test for negative budget
+def test_create_trip_negative_budget():
+    response = client.post(
+        "/trips",
+        json={
+            "destination": "Paris",
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-05",
+            "travelers": 2,
+            "budget": -100,
+            "interests": ["food"],
+        },
+    )
+
+    assert response.status_code == 422
+
+# Test for invalid date range (start_date after end_date)
+def test_create_trip_invalid_date_range():
+    response = client.post(
+        "/trips",
+        json={
+            "destination": "Paris",
+            "start_date": "2026-10-05",
+            "end_date": "2026-10-01",
+            "travelers": 2,
+            "budget": 1000,
+            "interests": ["food"],
+        },
+    )
+
+    assert response.status_code == 422
