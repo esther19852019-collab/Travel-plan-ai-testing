@@ -1,5 +1,5 @@
 
-from fastapi import FastAPI, status
+from fastapi import FastAPI, status, HTTPException
 
 from app.schemas.trip import TripCreate, TripResponse
 
@@ -29,3 +29,16 @@ def create_trip(trip: TripCreate):
 @app.get("/trips", response_model=list[TripResponse])
 def get_trips():
     return trips
+
+@app.get("/trips/{trip_id}", response_model=TripResponse)
+def get_trip(trip_id: int):
+    for trip in trips:
+        if trip.id == trip_id:
+            return trip
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Trip not found"
+    )
+
+
