@@ -1,7 +1,3 @@
-from fastapi import FastAPI
-
-app = FastAPI(title="Travel Plan API")
-
 
 from fastapi import FastAPI, status
 
