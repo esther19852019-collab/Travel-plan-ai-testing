@@ -19,6 +19,15 @@ def trip_data():
     }
 
 
+@pytest.fixture
+def created_trip(trip_data):
+    response = client.post("/trips", json=trip_data)
+
+    assert response.status_code == 201
+
+    return response.json()
+
+
 # POST /trips - Create a new trip
 def test_create_trip(trip_data):
     response = client.post("/trips", json=trip_data)
@@ -41,16 +50,19 @@ def test_get_trips():
 
 
 # GET /trips/{trip_id} - Get one trip
-def test_get_trip_by_id(trip_data):
-    response = client.get("/trips/1")
+def test_get_trip_by_id(created_trip):
+    trip_id = created_trip["id"]
+
+    response = client.get(f"/trips/{trip_id}")
 
     assert response.status_code == 200
 
     data = response.json()
 
-    assert data["destination"] == trip_data["destination"]
-    assert data["travelers"] == trip_data["travelers"]
-    assert data["budget"] == trip_data["budget"]
+    assert data["id"] == trip_id
+    assert data["destination"] == created_trip["destination"]
+    assert data["travelers"] == created_trip["travelers"]
+    assert data["budget"] == created_trip["budget"]
 
 
 # GET /trips/{trip_id} - Trip not found
@@ -62,38 +74,54 @@ def test_get_trip_not_found():
 
 
 # PUT /trips/{trip_id} - Update a trip
-def test_update_trip(trip_data):
+def test_update_trip(created_trip):
+    trip_id = created_trip["id"]
+
+    updated_trip_data = {
+        "destination": "London",
+        "start_date": "2026-11-01",
+        "end_date": "2026-11-05",
+        "travelers": 3,
+        "budget": 1500,
+        "interests": ["food", "museum", "shopping"],
+    }
+
     response = client.put(
-        "/trips/1",
-        json={
-            "destination": "Paris",
-            "start_date": "2026-10-01",
-            "end_date": "2026-10-05",
-            "travelers": 3,
-            "budget": 1500,
-            "interests": ["food", "museum"],
-        },
+        f"/trips/{trip_id}",
+        json=updated_trip_data,
     )
 
     assert response.status_code == 200
 
     data = response.json()
 
-    assert data["destination"] == "Paris"
-    assert data["travelers"] == 3
-    assert data["budget"] == 1500
+    assert data["id"] == trip_id
+    assert data["destination"] == updated_trip_data["destination"]
+    assert data["start_date"] == updated_trip_data["start_date"]
+    assert data["end_date"] == updated_trip_data["end_date"]
+    assert data["travelers"] == updated_trip_data["travelers"]
+    assert data["budget"] == updated_trip_data["budget"]
+    assert data["interests"] == updated_trip_data["interests"]
 
 
 # DELETE /trips/{trip_id} - Delete a trip
-def test_delete_trip():
-    response = client.delete("/trips/1")
+def test_delete_trip(created_trip):
+    trip_id = created_trip["id"]
+
+    response = client.delete(f"/trips/{trip_id}")
 
     assert response.status_code == 204
 
 
 # GET /trips/{trip_id} - Verify deleted trip
-def test_get_deleted_trip():
-    response = client.get("/trips/1")
+def test_get_deleted_trip(created_trip):
+    trip_id = created_trip["id"]
+
+    delete_response = client.delete(f"/trips/{trip_id}")
+
+    assert delete_response.status_code == 204
+
+    response = client.get(f"/trips/{trip_id}")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Trip not found"
