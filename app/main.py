@@ -25,3 +25,7 @@ def create_trip(trip: TripCreate):
     trips.append(new_trip)
 
     return new_trip
+
+@app.get("/trips", response_model=list[TripResponse])
+def get_trips():
+    return trips
