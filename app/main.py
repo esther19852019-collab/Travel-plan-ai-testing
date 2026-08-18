@@ -42,3 +42,19 @@ def get_trip(trip_id: int):
     )
 
 
+@app.put("/trips/{trip_id}", response_model=TripResponse)
+def update_trip(trip_id: int, trip_update: TripCreate):
+    for index, trip in enumerate(trips):
+        if trip.id == trip_id:
+            updated_trip = TripResponse(
+                id=trip_id,
+                **trip_update.model_dump()
+            )
+
+            trips[index]= updated_trip
+            return updated_trip
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Trip not found"
+    )
