@@ -58,3 +58,15 @@ def update_trip(trip_id: int, trip_update: TripCreate):
         status_code=status.HTTP_404_NOT_FOUND,
         detail="Trip not found"
     )
+
+@app.delete("/trips/{trip_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_trip(trip_id: int):
+    for index, trip in enumerate(trips):
+        if trip.id == trip_id:
+            trips.pop(index)
+            return
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Trip not found"
+    )
