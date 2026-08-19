@@ -27,7 +27,9 @@ def created_trip(trip_data):
 
     return response.json()
 
-
+#PART 1 - CRUD Operations
+#API Endpoints TESTS
+#-1 CREATE
 # POST /trips - Create a new trip
 def test_create_trip(trip_data):
     response = client.post("/trips", json=trip_data)
@@ -40,14 +42,17 @@ def test_create_trip(trip_data):
     assert data["travelers"] == trip_data["travelers"]
     assert data["budget"] == trip_data["budget"]
 
-
+#-2 READ
 # GET /trips - Get all trips
-def test_get_trips():
+def test_get_trips(created_trip):
     response = client.get("/trips")
 
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
 
+    data = response.json()
+
+    assert isinstance(data, list)
+    assert any(trip["id"] == created_trip["id"] for trip in data)
 
 # GET /trips/{trip_id} - Get one trip
 def test_get_trip_by_id(created_trip):
@@ -65,14 +70,7 @@ def test_get_trip_by_id(created_trip):
     assert data["budget"] == created_trip["budget"]
 
 
-# GET /trips/{trip_id} - Trip not found
-def test_get_trip_not_found():
-    response = client.get("/trips/999")
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Trip not found"
-
-
+#+3 UPDATE
 # PUT /trips/{trip_id} - Update a trip
 def test_update_trip(created_trip):
     trip_id = created_trip["id"]
@@ -104,6 +102,99 @@ def test_update_trip(created_trip):
     assert data["interests"] == updated_trip_data["interests"]
 
 
+
+#+4 DELETE
+# DELETE /trips/{trip_id} - Delete a trip
+def test_delete_trip(created_trip):
+    trip_id = created_trip["id"]
+
+    response = client.delete(f"/trips/{trip_id}")
+
+    assert response.status_code == 204
+
+
+#PART 2 - Negative Tests
+# Negative tests - invalid input
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"travelers": 0},
+        {"destination": None},
+        {"budget": -100},
+    ],
+)
+#1
+def test_create_trip_invalid_input(trip_data, overrides):
+    data = trip_data.copy()
+
+    for key, value in overrides.items():
+        if value is None:
+            data.pop(key)
+        else:
+            data[key] = value
+
+    response = client.post("/trips", json=data)
+
+    assert response.status_code == 422
+
+#2
+# Negative test - invalid date range
+def test_create_trip_invalid_date_range(trip_data):
+    data = trip_data.copy()
+
+    data["start_date"] = "2026-10-05"
+    data["end_date"] = "2026-10-01"
+
+    response = client.post("/trips", json=data)
+
+    assert response.status_code == 422
+
+#3
+# GET /trips/{trip_id} - Trip not found
+def test_get_trip_not_found():
+    response = client.get("/trips/999")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Trip not found"
+
+#4
+# PUT /trips/{trip_id} - Trip not found
+def test_update_trip_not_found(trip_data):
+    response = client.put(
+        "/trips/999999",
+        json=trip_data,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Trip not found"
+
+#5
+# DELETE /trips/{trip_id} - Trip not found
+def test_delete_trip_not_found():
+    response = client.delete("/trips/999")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Trip not found"
+
+
+#PART 3 - Boundary Value Tests
+# POST /trips - Valid boundary values
+def test_create_trip_minimum_values(trip_data):
+    data = trip_data.copy()
+
+    data["travelers"] = 1
+    data["budget"] = 0
+
+    response = client.post("/trips", json=data)
+
+    assert response.status_code == 201
+
+    result = response.json()
+
+    assert result["travelers"] == 1
+    assert result["budget"] == 0
+
+#PART 4 STATE VERIFICATION TESTS
 # GET /trips/{trip_id} - Verify updated trip
 def test_get_updated_trip(created_trip):
     trip_id = created_trip["id"]
@@ -138,24 +229,6 @@ def test_get_updated_trip(created_trip):
     assert data["budget"] == updated_trip_data["budget"]
     assert data["interests"] == updated_trip_data["interests"]
 
-# PUT /trips/{trip_id} - Trip not found
-def test_update_trip_not_found(trip_data):
-    response = client.put(
-        "/trips/999999",
-        json=trip_data,
-    )
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Trip not found"
-
-# DELETE /trips/{trip_id} - Delete a trip
-def test_delete_trip(created_trip):
-    trip_id = created_trip["id"]
-
-    response = client.delete(f"/trips/{trip_id}")
-
-    assert response.status_code == 204
-
 
 # GET /trips/{trip_id} - Verify deleted trip
 def test_get_deleted_trip(created_trip):
@@ -171,51 +244,10 @@ def test_get_deleted_trip(created_trip):
     assert response.json()["detail"] == "Trip not found"
 
 
-# Negative tests - invalid input
-@pytest.mark.parametrize(
-    "overrides",
-    [
-        {"travelers": 0},
-        {"destination": None},
-        {"budget": -100},
-    ],
-)
-def test_create_trip_invalid_input(trip_data, overrides):
-    data = trip_data.copy()
-
-    for key, value in overrides.items():
-        if value is None:
-            data.pop(key)
-        else:
-            data[key] = value
-
-    response = client.post("/trips", json=data)
-
-    assert response.status_code == 422
-
-
-# Negative test - invalid date range
-def test_create_trip_invalid_date_range(trip_data):
-    data = trip_data.copy()
-
-    data["start_date"] = "2026-10-05"
-    data["end_date"] = "2026-10-01"
-
-    response = client.post("/trips", json=data)
-
-    assert response.status_code == 422
-
+#Basic / Endpoint availability test
 # GET / - Root endpoint
 def test_root():
     response = client.get("/")
 
     assert response.status_code == 200
     assert response.json()["message"] == "Travel Plan API is running"
-
-
-# DELETE /trips/{trip_id} - Trip not found
-def test_delete_trip_not_found():
-    response = client.delete("/trips/999")
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Trip not found"
