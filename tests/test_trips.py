@@ -104,6 +104,50 @@ def test_update_trip(created_trip):
     assert data["interests"] == updated_trip_data["interests"]
 
 
+# GET /trips/{trip_id} - Verify updated trip
+def test_get_updated_trip(created_trip):
+    trip_id = created_trip["id"]
+
+    updated_trip_data = {
+        "destination": "London",
+        "start_date": "2026-11-01",
+        "end_date": "2026-11-05",
+        "travelers": 3,
+        "budget": 1500,
+        "interests": ["food", "museum", "shopping"],
+    }
+
+    update_response = client.put(
+        f"/trips/{trip_id}",
+        json=updated_trip_data,
+    )
+
+    assert update_response.status_code == 200
+
+    response = client.get(f"/trips/{trip_id}")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["id"] == trip_id
+    assert data["destination"] == updated_trip_data["destination"]
+    assert data["start_date"] == updated_trip_data["start_date"]
+    assert data["end_date"] == updated_trip_data["end_date"]
+    assert data["travelers"] == updated_trip_data["travelers"]
+    assert data["budget"] == updated_trip_data["budget"]
+    assert data["interests"] == updated_trip_data["interests"]
+
+# PUT /trips/{trip_id} - Trip not found
+def test_update_trip_not_found(trip_data):
+    response = client.put(
+        "/trips/999999",
+        json=trip_data,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Trip not found"
+
 # DELETE /trips/{trip_id} - Delete a trip
 def test_delete_trip(created_trip):
     trip_id = created_trip["id"]
@@ -160,3 +204,18 @@ def test_create_trip_invalid_date_range(trip_data):
     response = client.post("/trips", json=data)
 
     assert response.status_code == 422
+
+# GET / - Root endpoint
+def test_root():
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Travel Plan API is running"
+
+
+# DELETE /trips/{trip_id} - Trip not found
+def test_delete_trip_not_found():
+    response = client.delete("/trips/999")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Trip not found"
