@@ -19,3 +19,4 @@ class TripCreate(BaseModel):
 
 class TripResponse(TripCreate):
     id: int
+    days: int

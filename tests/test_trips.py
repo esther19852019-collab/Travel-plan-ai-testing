@@ -1,11 +1,12 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
-
+from app.main import app, trips
 
 client = TestClient(app)
-
+@pytest.fixture(autouse=True)
+def clear_trips():
+    trips.clear()
 
 @pytest.fixture
 def trip_data():
@@ -251,3 +252,19 @@ def test_root():
 
     assert response.status_code == 200
     assert response.json()["message"] == "Travel Plan API is running"
+
+
+def test_create_trip_overlapping_dates(trip_data):
+    # Create the first trip
+    first_response = client.post("/trips", json=trip_data)
+
+    assert first_response.status_code == 201
+
+    # Create another trip with overlapping dates
+    overlapping_trip = trip_data.copy()
+    overlapping_trip["destination"] = "London"
+
+    second_response = client.post("/trips", json=overlapping_trip)
+
+    assert second_response.status_code == 409
+    assert second_response.json()["detail"] == "Trip dates overlap with an existing trip"

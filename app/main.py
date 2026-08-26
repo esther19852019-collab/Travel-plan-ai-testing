@@ -3,6 +3,8 @@ from fastapi import FastAPI, status, HTTPException
 
 from app.schemas.trip import TripCreate, TripResponse
 
+from app.trip_logic import calculate_trip_days, trips_overlap
+
 app = FastAPI(title="Travel Plan API")
 
 trips: list[TripResponse] = []
@@ -15,10 +17,28 @@ def root():
 
 @app.post("/trips", response_model=TripResponse, status_code=status.HTTP_201_CREATED)
 def create_trip(trip: TripCreate):
+    for existing_trip in trips:
+        if trips_overlap(
+            trip.start_date,
+            trip.end_date,
+            existing_trip.start_date,
+            existing_trip.end_date,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Trip dates overlap with an existing trip",
+            )
+
     trip_id = len(trips) + 1
+
+    days = calculate_trip_days(
+        trip.start_date,
+        trip.end_date
+    )
 
     new_trip = TripResponse(
         id=trip_id,
+        days=days,
         **trip.model_dump(),
     )
 
@@ -46,8 +66,14 @@ def get_trip(trip_id: int):
 def update_trip(trip_id: int, trip_update: TripCreate):
     for index, trip in enumerate(trips):
         if trip.id == trip_id:
+            days = calculate_trip_days(
+                trip_update.start_date,
+                trip_update.end_date
+            )
+            
             updated_trip = TripResponse(
                 id=trip_id,
+                days=days,
                 **trip_update.model_dump()
             )
 
