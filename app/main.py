@@ -2,7 +2,7 @@
 from fastapi import FastAPI, status, HTTPException
 
 from app.schemas.trip import TripCreate, TripResponse
-from app.schemas.user import UserCreate
+from app.schemas.user import UserCreate, UserLogin
 
 from app.trip_logic import calculate_trip_days, trips_overlap
 
@@ -58,6 +58,26 @@ def create_trip(trip: TripCreate):
     trips.append(new_trip)
 
     return new_trip
+
+@app.post("/auth/login")
+def login_user(user:UserLogin):
+    for existing_user in users:
+        if existing_user.email == user.email:
+            if existing_user.password == user.password:
+                return {
+                    "message": "Login successful",
+                    "email": existing_user.email,                    
+                }
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid password",
+        )
+        
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid email or password"
+    )
 
 @app.get("/trips", response_model=list[TripResponse])
 def get_trips():
