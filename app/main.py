@@ -2,17 +2,30 @@
 from fastapi import FastAPI, status, HTTPException
 
 from app.schemas.trip import TripCreate, TripResponse
+from app.schemas.user import UserCreate
 
 from app.trip_logic import calculate_trip_days, trips_overlap
 
 app = FastAPI(title="Travel Plan API")
 
 trips: list[TripResponse] = []
+users: list[UserCreate] = []
 
 
 @app.get("/")
 def root():
     return {"message": "Travel Plan API is running"}
+
+@app.post("/auth/register", response_model=UserCreate, status_code=status.HTTP_201_CREATED)
+def register_user(user: UserCreate):
+    for existing_user in users:
+        if existing_user.email == user.email:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already registered"
+            )
+    users.append(user)
+    return user
 
 
 @app.post("/trips", response_model=TripResponse, status_code=status.HTTP_201_CREATED)
