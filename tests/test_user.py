@@ -45,7 +45,7 @@ def test_register_user():
     data = response.json()
 
     assert data["email"] == "newuser@example.com"
-    assert data["password"] == "password123"
+
 
 #test the duplicate email registration endpoint
 def test_register_duplicate_email():

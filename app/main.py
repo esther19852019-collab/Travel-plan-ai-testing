@@ -2,30 +2,44 @@
 from fastapi import FastAPI, status, HTTPException
 
 from app.schemas.trip import TripCreate, TripResponse
-from app.schemas.user import UserCreate, UserLogin
-
+from app.schemas.user import UserCreate, UserLogin, UserResponse
+from app.core.security import hash_password
 from app.trip_logic import calculate_trip_days, trips_overlap
 
 app = FastAPI(title="Travel Plan API")
 
 trips: list[TripResponse] = []
-users: list[UserCreate] = []
+users: list[dict] = []
 
 
 @app.get("/")
 def root():
     return {"message": "Travel Plan API is running"}
 
-@app.post("/auth/register", response_model=UserCreate, status_code=status.HTTP_201_CREATED)
+@app.post("/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register_user(user: UserCreate):
     for existing_user in users:
-        if existing_user.email == user.email:
+        if existing_user["email"] == user.email:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Email already registered"
             )
-    users.append(user)
-    return user
+    user_id = len(users) +1
+    hashed_password = hash_password(user.password)
+    new_user = UserResponse(
+        id=user_id,
+        email=user.email,
+    )
+    users.append(
+        {
+            "id": user_id,
+            "email": user.email,
+            "password": hashed_password,
+        }
+    )
+
+    return new_user
+
 
 
 @app.post("/trips", response_model=TripResponse, status_code=status.HTTP_201_CREATED)
@@ -62,8 +76,8 @@ def create_trip(trip: TripCreate):
 @app.post("/auth/login")
 def login_user(user:UserLogin):
     for existing_user in users:
-        if existing_user.email == user.email:
-            if existing_user.password == user.password:
+        if existing_user["email"] == user.email:
+            if existing_user["password"] == user.password:
                 return {
                     "message": "Login successful",
                     "email": existing_user.email,                    
