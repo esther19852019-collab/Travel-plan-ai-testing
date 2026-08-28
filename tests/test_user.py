@@ -87,3 +87,59 @@ def test_register_user_invalid_input(user_data):
     )
 
     assert response.status_code == 422
+
+def test_login_user():
+    response = client.post(
+        "/auth/register",
+        json={
+            "email": "login@example.com",
+            "password": "password123",
+        },
+    )
+
+    assert response.status_code == 201
+
+    response = client.post(
+        "/auth/login",
+        json={
+            "email": "login@example.com",
+            "password": "password123",
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert "access_token" in data
+    assert data["token_type"] == "bearer"
+
+def test_login_user_wrong_password():
+    client.post(
+        "/auth/register",
+        json={
+            "email": "wrongpassword@example.com",
+            "password": "password123",
+        },
+    )
+
+    response = client.post(
+        "/auth/login",
+        json={
+            "email": "wrongpassword@example.com",
+            "password": "wrongpassword",
+        },
+    )
+
+    assert response.status_code == 401
+
+def test_login_user_not_found():
+    response = client.post(
+        "/auth/login",
+        json={
+            "email": "notfound@example.com",
+            "password": "password123",
+        },
+    )
+
+    assert response.status_code == 401

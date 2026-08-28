@@ -1,12 +1,50 @@
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app, trips
 
+
 client = TestClient(app)
+
+
 @pytest.fixture(autouse=True)
 def clear_trips():
     trips.clear()
+
+
+@pytest.fixture
+def auth_headers():
+    email = f"trip-test-{uuid.uuid4().hex}@example.com"
+    password = "password123"
+
+    register_response = client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": password,
+        },
+    )
+
+    assert register_response.status_code == 201
+
+    login_response = client.post(
+        "/auth/login",
+        json={
+            "email": email,
+            "password": password,
+        },
+    )
+
+    assert login_response.status_code == 200
+
+    token = login_response.json()["access_token"]
+
+    return {
+        "Authorization": f"Bearer {token}"
+    }
+
 
 @pytest.fixture
 def trip_data():
@@ -21,19 +59,29 @@ def trip_data():
 
 
 @pytest.fixture
-def created_trip(trip_data):
-    response = client.post("/trips", json=trip_data)
+def created_trip(trip_data, auth_headers):
+    response = client.post(
+        "/trips",
+        json=trip_data,
+        headers=auth_headers,
+    )
 
     assert response.status_code == 201
 
     return response.json()
 
-#PART 1 - CRUD Operations
-#API Endpoints TESTS
-#-1 CREATE
+
+# ============================================================
+# PART 1 - CRUD Operations
+# ============================================================
+
 # POST /trips - Create a new trip
-def test_create_trip(trip_data):
-    response = client.post("/trips", json=trip_data)
+def test_create_trip(trip_data, auth_headers):
+    response = client.post(
+        "/trips",
+        json=trip_data,
+        headers=auth_headers,
+    )
 
     assert response.status_code == 201
 
@@ -43,23 +91,33 @@ def test_create_trip(trip_data):
     assert data["travelers"] == trip_data["travelers"]
     assert data["budget"] == trip_data["budget"]
 
-#-2 READ
+
 # GET /trips - Get all trips
-def test_get_trips(created_trip):
-    response = client.get("/trips")
+def test_get_trips(created_trip, auth_headers):
+    response = client.get(
+        "/trips",
+        headers=auth_headers,
+    )
 
     assert response.status_code == 200
 
     data = response.json()
 
     assert isinstance(data, list)
-    assert any(trip["id"] == created_trip["id"] for trip in data)
+    assert any(
+        trip["id"] == created_trip["id"]
+        for trip in data
+    )
+
 
 # GET /trips/{trip_id} - Get one trip
-def test_get_trip_by_id(created_trip):
+def test_get_trip_by_id(created_trip, auth_headers):
     trip_id = created_trip["id"]
 
-    response = client.get(f"/trips/{trip_id}")
+    response = client.get(
+        f"/trips/{trip_id}",
+        headers=auth_headers,
+    )
 
     assert response.status_code == 200
 
@@ -71,9 +129,8 @@ def test_get_trip_by_id(created_trip):
     assert data["budget"] == created_trip["budget"]
 
 
-#+3 UPDATE
 # PUT /trips/{trip_id} - Update a trip
-def test_update_trip(created_trip):
+def test_update_trip(created_trip, auth_headers):
     trip_id = created_trip["id"]
 
     updated_trip_data = {
@@ -88,6 +145,7 @@ def test_update_trip(created_trip):
     response = client.put(
         f"/trips/{trip_id}",
         json=updated_trip_data,
+        headers=auth_headers,
     )
 
     assert response.status_code == 200
@@ -103,18 +161,22 @@ def test_update_trip(created_trip):
     assert data["interests"] == updated_trip_data["interests"]
 
 
-
-#+4 DELETE
 # DELETE /trips/{trip_id} - Delete a trip
-def test_delete_trip(created_trip):
+def test_delete_trip(created_trip, auth_headers):
     trip_id = created_trip["id"]
 
-    response = client.delete(f"/trips/{trip_id}")
+    response = client.delete(
+        f"/trips/{trip_id}",
+        headers=auth_headers,
+    )
 
     assert response.status_code == 204
 
 
-#PART 2 - Negative Tests
+# ============================================================
+# PART 2 - Negative Tests
+# ============================================================
+
 # Negative tests - invalid input
 @pytest.mark.parametrize(
     "overrides",
@@ -124,8 +186,11 @@ def test_delete_trip(created_trip):
         {"budget": -100},
     ],
 )
-#1
-def test_create_trip_invalid_input(trip_data, overrides):
+def test_create_trip_invalid_input(
+    trip_data,
+    auth_headers,
+    overrides,
+):
     data = trip_data.copy()
 
     for key, value in overrides.items():
@@ -134,59 +199,90 @@ def test_create_trip_invalid_input(trip_data, overrides):
         else:
             data[key] = value
 
-    response = client.post("/trips", json=data)
+    response = client.post(
+        "/trips",
+        json=data,
+        headers=auth_headers,
+    )
 
     assert response.status_code == 422
 
-#2
+
 # Negative test - invalid date range
-def test_create_trip_invalid_date_range(trip_data):
+def test_create_trip_invalid_date_range(
+    trip_data,
+    auth_headers,
+):
     data = trip_data.copy()
 
     data["start_date"] = "2026-10-05"
     data["end_date"] = "2026-10-01"
 
-    response = client.post("/trips", json=data)
+    response = client.post(
+        "/trips",
+        json=data,
+        headers=auth_headers,
+    )
 
     assert response.status_code == 422
 
-#3
+
 # GET /trips/{trip_id} - Trip not found
-def test_get_trip_not_found():
-    response = client.get("/trips/999")
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Trip not found"
-
-#4
-# PUT /trips/{trip_id} - Trip not found
-def test_update_trip_not_found(trip_data):
-    response = client.put(
-        "/trips/999999",
-        json=trip_data,
+def test_get_trip_not_found(auth_headers):
+    response = client.get(
+        "/trips/999",
+        headers=auth_headers,
     )
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Trip not found"
 
-#5
-# DELETE /trips/{trip_id} - Trip not found
-def test_delete_trip_not_found():
-    response = client.delete("/trips/999")
+
+# PUT /trips/{trip_id} - Trip not found
+def test_update_trip_not_found(
+    trip_data,
+    auth_headers,
+):
+    response = client.put(
+        "/trips/999999",
+        json=trip_data,
+        headers=auth_headers,
+    )
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Trip not found"
 
 
-#PART 3 - Boundary Value Tests
+# DELETE /trips/{trip_id} - Trip not found
+def test_delete_trip_not_found(auth_headers):
+    response = client.delete(
+        "/trips/999",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Trip not found"
+
+
+# ============================================================
+# PART 3 - Boundary Value Tests
+# ============================================================
+
 # POST /trips - Valid boundary values
-def test_create_trip_minimum_values(trip_data):
+def test_create_trip_minimum_values(
+    trip_data,
+    auth_headers,
+):
     data = trip_data.copy()
 
     data["travelers"] = 1
     data["budget"] = 0
 
-    response = client.post("/trips", json=data)
+    response = client.post(
+        "/trips",
+        json=data,
+        headers=auth_headers,
+    )
 
     assert response.status_code == 201
 
@@ -195,9 +291,16 @@ def test_create_trip_minimum_values(trip_data):
     assert result["travelers"] == 1
     assert result["budget"] == 0
 
-#PART 4 STATE VERIFICATION TESTS
+
+# ============================================================
+# PART 4 - STATE VERIFICATION TESTS
+# ============================================================
+
 # GET /trips/{trip_id} - Verify updated trip
-def test_get_updated_trip(created_trip):
+def test_get_updated_trip(
+    created_trip,
+    auth_headers,
+):
     trip_id = created_trip["id"]
 
     updated_trip_data = {
@@ -212,11 +315,15 @@ def test_get_updated_trip(created_trip):
     update_response = client.put(
         f"/trips/{trip_id}",
         json=updated_trip_data,
+        headers=auth_headers,
     )
 
     assert update_response.status_code == 200
 
-    response = client.get(f"/trips/{trip_id}")
+    response = client.get(
+        f"/trips/{trip_id}",
+        headers=auth_headers,
+    )
 
     assert response.status_code == 200
 
@@ -232,20 +339,32 @@ def test_get_updated_trip(created_trip):
 
 
 # GET /trips/{trip_id} - Verify deleted trip
-def test_get_deleted_trip(created_trip):
+def test_get_deleted_trip(
+    created_trip,
+    auth_headers,
+):
     trip_id = created_trip["id"]
 
-    delete_response = client.delete(f"/trips/{trip_id}")
+    delete_response = client.delete(
+        f"/trips/{trip_id}",
+        headers=auth_headers,
+    )
 
     assert delete_response.status_code == 204
 
-    response = client.get(f"/trips/{trip_id}")
+    response = client.get(
+        f"/trips/{trip_id}",
+        headers=auth_headers,
+    )
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Trip not found"
 
 
-#Basic / Endpoint availability test
+# ============================================================
+# PART 5 - Basic Endpoint Availability
+# ============================================================
+
 # GET / - Root endpoint
 def test_root():
     response = client.get("/")
@@ -254,9 +373,21 @@ def test_root():
     assert response.json()["message"] == "Travel Plan API is running"
 
 
-def test_create_trip_overlapping_dates(trip_data):
+# ============================================================
+# PART 6 - Business Logic
+# ============================================================
+
+# POST /trips - Overlapping dates
+def test_create_trip_overlapping_dates(
+    trip_data,
+    auth_headers,
+):
     # Create the first trip
-    first_response = client.post("/trips", json=trip_data)
+    first_response = client.post(
+        "/trips",
+        json=trip_data,
+        headers=auth_headers,
+    )
 
     assert first_response.status_code == 201
 
@@ -264,7 +395,14 @@ def test_create_trip_overlapping_dates(trip_data):
     overlapping_trip = trip_data.copy()
     overlapping_trip["destination"] = "London"
 
-    second_response = client.post("/trips", json=overlapping_trip)
+    second_response = client.post(
+        "/trips",
+        json=overlapping_trip,
+        headers=auth_headers,
+    )
 
     assert second_response.status_code == 409
-    assert second_response.json()["detail"] == "Trip dates overlap with an existing trip"
+    assert (
+        second_response.json()["detail"]
+        == "Trip dates overlap with an existing trip"
+    )

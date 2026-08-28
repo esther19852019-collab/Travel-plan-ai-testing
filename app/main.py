@@ -1,9 +1,14 @@
 
-from fastapi import FastAPI, status, HTTPException
+from fastapi import FastAPI, status, HTTPException, Depends
 
 from app.schemas.trip import TripCreate, TripResponse
 from app.schemas.user import UserCreate, UserLogin, UserResponse
-from app.core.security import hash_password
+from app.core.security import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    decode_access_token,
+)
 from app.trip_logic import calculate_trip_days, trips_overlap
 
 app = FastAPI(title="Travel Plan API")
@@ -11,6 +16,15 @@ app = FastAPI(title="Travel Plan API")
 trips: list[TripResponse] = []
 users: list[dict] = []
 
+def get_current_user(email: str = Depends(decode_access_token)):
+    for user in users:
+        if user["email"] == email:
+            return user
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="User not found",
+    )
 
 @app.get("/")
 def root():
@@ -43,7 +57,10 @@ def register_user(user: UserCreate):
 
 
 @app.post("/trips", response_model=TripResponse, status_code=status.HTTP_201_CREATED)
-def create_trip(trip: TripCreate):
+def create_trip(
+    trip: TripCreate,
+    current_user: dict = Depends(get_current_user),
+):
     for existing_trip in trips:
         if trips_overlap(
             trip.start_date,
@@ -74,31 +91,44 @@ def create_trip(trip: TripCreate):
     return new_trip
 
 @app.post("/auth/login")
-def login_user(user:UserLogin):
+def login_user(user: UserLogin):
     for existing_user in users:
         if existing_user["email"] == user.email:
-            if existing_user["password"] == user.password:
-                return {
-                    "message": "Login successful",
-                    "email": existing_user.email,                    
-                }
 
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid password",
-        )
-        
+            if not verify_password(
+                user.password,
+                existing_user["password"],
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Incorrect email or password",
+                )
+
+            access_token = create_access_token(
+                data={"sub": existing_user["email"]}
+            )
+
+            return {
+                "access_token": access_token,
+                "token_type": "bearer",
+            }
+
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid email or password"
+        detail="Incorrect email or password",
     )
 
 @app.get("/trips", response_model=list[TripResponse])
-def get_trips():
+def get_trips(
+    current_user: dict = Depends(get_current_user),
+):
     return trips
 
 @app.get("/trips/{trip_id}", response_model=TripResponse)
-def get_trip(trip_id: int):
+def get_trip(
+    trip_id: int,
+    current_user: dict = Depends(get_current_user),
+):
     for trip in trips:
         if trip.id == trip_id:
             return trip
@@ -110,7 +140,11 @@ def get_trip(trip_id: int):
 
 
 @app.put("/trips/{trip_id}", response_model=TripResponse)
-def update_trip(trip_id: int, trip_update: TripCreate):
+def update_trip(
+    trip_id: int,
+    trip_update: TripCreate,
+    current_user: dict = Depends(get_current_user),
+):
     for index, trip in enumerate(trips):
         if trip.id == trip_id:
             days = calculate_trip_days(
@@ -133,7 +167,10 @@ def update_trip(trip_id: int, trip_update: TripCreate):
     )
 
 @app.delete("/trips/{trip_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_trip(trip_id: int):
+def delete_trip(
+    trip_id: int,
+    current_user: dict = Depends(get_current_user),
+):
     for index, trip in enumerate(trips):
         if trip.id == trip_id:
             trips.pop(index)
