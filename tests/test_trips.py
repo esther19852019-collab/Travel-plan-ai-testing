@@ -406,3 +406,22 @@ def test_create_trip_overlapping_dates(
         second_response.json()["detail"]
         == "Trip dates overlap with an existing trip"
     )
+
+# PART 7 - Authentication Tests
+
+# Access protected endpoint without JWT
+def test_get_trips_without_token():
+    response = client.get("/trips")
+
+    assert response.status_code == 401
+
+# Access protected endpoint with invalid JWT
+def test_get_trips_with_invalid_token():
+    response = client.get(
+        "/trips",
+        headers={
+            "Authorization": "Bearer invalid-token",
+        },
+    )
+
+    assert response.status_code == 401

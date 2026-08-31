@@ -1,13 +1,21 @@
 from datetime import datetime, timedelta, timezone
+import os
 import jwt
+from dotenv import load_dotenv
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pwdlib import PasswordHash
+load_dotenv()
 
 password_hash = PasswordHash.recommended()
 
 # Set the expiration time for the access token (e.g., 1 hour)
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-SECRET_KEY = "change-this-secret-key"
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY is not set")
 
 def hash_password(password:str)-> str:
     return password_hash.hash(password)
@@ -29,8 +37,6 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 security = HTTPBearer()
 
