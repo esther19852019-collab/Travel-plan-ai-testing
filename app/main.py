@@ -133,6 +133,7 @@ def create_trip(
 
     new_trip = TripResponse(
         id=trip_id,
+        user_id=current_user["id"],
         days=days,
         **trip.model_dump(),
     )
@@ -183,6 +184,7 @@ def update_trip(
 
             updated_trip = TripResponse(
                 id=trip_id,
+                user_id=current_user["id"],
                 days=days,
                 **trip_update.model_dump(),
             )

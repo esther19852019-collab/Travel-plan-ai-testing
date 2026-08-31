@@ -40,10 +40,15 @@ def auth_headers():
     assert login_response.status_code == 200
 
     token = login_response.json()["access_token"]
+    user_id = register_response.json()["id"]
 
     return {
-        "Authorization": f"Bearer {token}"
+        "headers": {
+            "Authorization": f"Bearer {token}"
+        },
+        "user_id": user_id,
     }
+
 
 
 @pytest.fixture
@@ -63,7 +68,7 @@ def created_trip(trip_data, auth_headers):
     response = client.post(
         "/trips",
         json=trip_data,
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert response.status_code == 201
@@ -80,7 +85,7 @@ def test_create_trip(trip_data, auth_headers):
     response = client.post(
         "/trips",
         json=trip_data,
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert response.status_code == 201
@@ -90,13 +95,14 @@ def test_create_trip(trip_data, auth_headers):
     assert data["destination"] == trip_data["destination"]
     assert data["travelers"] == trip_data["travelers"]
     assert data["budget"] == trip_data["budget"]
+    assert data["user_id"] == auth_headers["user_id"]
 
 
 # GET /trips - Get all trips
 def test_get_trips(created_trip, auth_headers):
     response = client.get(
         "/trips",
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert response.status_code == 200
@@ -116,7 +122,7 @@ def test_get_trip_by_id(created_trip, auth_headers):
 
     response = client.get(
         f"/trips/{trip_id}",
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert response.status_code == 200
@@ -145,7 +151,7 @@ def test_update_trip(created_trip, auth_headers):
     response = client.put(
         f"/trips/{trip_id}",
         json=updated_trip_data,
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert response.status_code == 200
@@ -167,7 +173,7 @@ def test_delete_trip(created_trip, auth_headers):
 
     response = client.delete(
         f"/trips/{trip_id}",
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert response.status_code == 204
@@ -202,7 +208,7 @@ def test_create_trip_invalid_input(
     response = client.post(
         "/trips",
         json=data,
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert response.status_code == 422
@@ -221,7 +227,7 @@ def test_create_trip_invalid_date_range(
     response = client.post(
         "/trips",
         json=data,
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert response.status_code == 422
@@ -231,7 +237,7 @@ def test_create_trip_invalid_date_range(
 def test_get_trip_not_found(auth_headers):
     response = client.get(
         "/trips/999",
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert response.status_code == 404
@@ -246,7 +252,7 @@ def test_update_trip_not_found(
     response = client.put(
         "/trips/999999",
         json=trip_data,
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert response.status_code == 404
@@ -257,7 +263,7 @@ def test_update_trip_not_found(
 def test_delete_trip_not_found(auth_headers):
     response = client.delete(
         "/trips/999",
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert response.status_code == 404
@@ -281,7 +287,7 @@ def test_create_trip_minimum_values(
     response = client.post(
         "/trips",
         json=data,
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert response.status_code == 201
@@ -315,14 +321,14 @@ def test_get_updated_trip(
     update_response = client.put(
         f"/trips/{trip_id}",
         json=updated_trip_data,
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert update_response.status_code == 200
 
     response = client.get(
         f"/trips/{trip_id}",
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert response.status_code == 200
@@ -347,14 +353,14 @@ def test_get_deleted_trip(
 
     delete_response = client.delete(
         f"/trips/{trip_id}",
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert delete_response.status_code == 204
 
     response = client.get(
         f"/trips/{trip_id}",
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert response.status_code == 404
@@ -386,7 +392,7 @@ def test_create_trip_overlapping_dates(
     first_response = client.post(
         "/trips",
         json=trip_data,
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert first_response.status_code == 201
@@ -398,7 +404,7 @@ def test_create_trip_overlapping_dates(
     second_response = client.post(
         "/trips",
         json=overlapping_trip,
-        headers=auth_headers,
+        headers=auth_headers["headers"],
     )
 
     assert second_response.status_code == 409
@@ -411,6 +417,7 @@ def test_create_trip_overlapping_dates(
 
 # Access protected endpoint without JWT
 def test_get_trips_without_token():
+
     response = client.get("/trips")
 
     assert response.status_code == 401
