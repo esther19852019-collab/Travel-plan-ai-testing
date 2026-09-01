@@ -148,7 +148,11 @@ def create_trip(
 def get_trips(
     current_user: dict = Depends(get_current_user),
 ):
-    return trips
+    return [
+        trip
+        for trip in trips
+        if trip.user_id == current_user["id"]
+    ]
 
 
 # Get one trip - Protected
@@ -159,6 +163,11 @@ def get_trip(
 ):
     for trip in trips:
         if trip.id == trip_id:
+            if trip.user_id != current_user["id"]:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have access to this trip",
+                )
             return trip
 
     raise HTTPException(
@@ -176,7 +185,11 @@ def update_trip(
 ):
     for index, trip in enumerate(trips):
         if trip.id == trip_id:
-
+            if trip.user_id != current_user["id"]:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have access to this trip",
+                )
             days = calculate_trip_days(
                 trip_update.start_date,
                 trip_update.end_date,

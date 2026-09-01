@@ -432,3 +432,75 @@ def test_get_trips_with_invalid_token():
     )
 
     assert response.status_code == 401
+
+# User–Trip data isolation
+def test_user_can_only_see_own_trips(
+    trip_data,
+    auth_headers,
+):
+    # User A creates a trip
+    first_response = client.post(
+        "/trips",
+        json=trip_data,
+        headers=auth_headers["headers"],
+    )
+
+    assert first_response.status_code == 201
+
+    first_trip = first_response.json()
+
+    assert first_trip["user_id"] == auth_headers["user_id"]
+
+    # Create User B
+    second_email = f"trip-test-{uuid.uuid4().hex}@example.com"
+    second_password = "password123"
+
+    register_response = client.post(
+        "/auth/register",
+        json={
+            "email": second_email,
+            "password": second_password,
+        },
+    )
+
+    assert register_response.status_code == 201
+
+    second_user_id = register_response.json()["id"]
+
+    login_response = client.post(
+        "/auth/login",
+        json={
+            "email": second_email,
+            "password": second_password,
+        },
+    )
+
+    assert login_response.status_code == 200
+
+    second_token = login_response.json()["access_token"]
+
+    second_headers = {
+        "Authorization": f"Bearer {second_token}"
+    }
+
+    # User B gets trips
+    response = client.get(
+        "/trips",
+        headers=second_headers,
+    )
+
+    assert response.status_code == 200
+
+    user_b_trips = response.json()
+
+    # User B must not see User A's trip
+    assert all(
+        trip["user_id"] != auth_headers["user_id"]
+        for trip in user_b_trips
+    )
+
+    # User B should only see their own trips
+    assert all(
+        trip["user_id"] == second_user_id
+        for trip in user_b_trips
+    )
