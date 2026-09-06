@@ -1,108 +1,156 @@
 from fastapi import FastAPI, status, HTTPException, Depends
+from sqlalchemy.orm import Session
 
-from app.schemas.trip import TripCreate, TripResponse
 from app.schemas.user import UserCreate, UserLogin, UserResponse
+from app.schemas.trip import TripCreate, TripResponse
 from app.core.security import (
     hash_password,
     verify_password,
     create_access_token,
     decode_access_token,
 )
+from app.core.database import get_db
+from app.models.user import User
+from app.models.trip import Trip
 from app.trip_logic import calculate_trip_days, trips_overlap
 
 
 app = FastAPI(title="Travel Plan API")
 
 
-trips: list[TripResponse] = []
-users: list[dict] = []
+# ============================================================
+# AUTHENTICATION
+# ============================================================
 
-
-# JWT authentication dependency
 def get_current_user(
     email: str = Depends(decode_access_token),
+    db: Session = Depends(get_db),
 ):
-    for user in users:
-        if user["email"] == email:
-            return user
-
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="User not found",
+    user = (
+        db.query(User)
+        .filter(User.email == email)
+        .first()
     )
 
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
 
-# Root endpoint
+    return user
+
+
+# ============================================================
+# ROOT
+# ============================================================
+
 @app.get("/")
 def root():
-    return {"message": "Travel Plan API is running"}
+    return {
+        "message": "Travel Plan API is running"
+    }
 
 
-# Register
+# ============================================================
+# AUTH - REGISTER
+# ============================================================
+
 @app.post(
     "/auth/register",
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def register_user(user: UserCreate):
-    for existing_user in users:
-        if existing_user["email"] == user.email:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Email already registered",
-            )
+def register_user(
+    user: UserCreate,
+    db: Session = Depends(get_db),
+):
+    existing_user = (
+        db.query(User)
+        .filter(User.email == user.email)
+        .first()
+    )
 
-    user_id = len(users) + 1
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered",
+        )
 
     hashed_password = hash_password(user.password)
 
-    new_user = UserResponse(
-        id=user_id,
+    new_user = User(
         email=user.email,
+        password=hashed_password,
     )
 
-    users.append(
-        {
-            "id": user_id,
-            "email": user.email,
-            "password": hashed_password,
-        }
-    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
 
     return new_user
 
 
-# Login
+# ============================================================
+# AUTH - LOGIN
+# ============================================================
+
 @app.post("/auth/login")
-def login_user(user: UserLogin):
-    for existing_user in users:
-        if existing_user["email"] == user.email:
-
-            if not verify_password(
-                user.password,
-                existing_user["password"],
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Incorrect email or password",
-                )
-
-            access_token = create_access_token(
-                data={"sub": existing_user["email"]}
-            )
-
-            return {
-                "access_token": access_token,
-                "token_type": "bearer",
-            }
-
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Incorrect email or password",
+def login_user(
+    user: UserLogin,
+    db: Session = Depends(get_db),
+):
+    existing_user = (
+        db.query(User)
+        .filter(User.email == user.email)
+        .first()
     )
 
+    if not existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+        )
 
-# Create trip - Protected
+    if not verify_password(
+        user.password,
+        existing_user.password,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+        )
+
+    access_token = create_access_token(
+        data={
+            "sub": existing_user.email
+        }
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+    }
+
+
+# ============================================================
+# AUTH - CURRENT USER
+# ============================================================
+
+@app.get("/auth/me")
+def get_me(
+    current_user: User = Depends(get_current_user),
+):
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+    }
+
+
+# ============================================================
+# TRIPS - CREATE
+# ============================================================
+
 @app.post(
     "/trips",
     response_model=TripResponse,
@@ -110,9 +158,17 @@ def login_user(user: UserLogin):
 )
 def create_trip(
     trip: TripCreate,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    for existing_trip in trips:
+    # Check overlapping trips belonging to the current user
+    existing_trips = (
+        db.query(Trip)
+        .filter(Trip.user_id == current_user.id)
+        .all()
+    )
+
+    for existing_trip in existing_trips:
         if trips_overlap(
             trip.start_date,
             trip.end_date,
@@ -124,109 +180,227 @@ def create_trip(
                 detail="Trip dates overlap with an existing trip",
             )
 
-    trip_id = len(trips) + 1
+    days = calculate_trip_days(
+        trip.start_date,
+        trip.end_date,
+    )
+
+    new_trip = Trip(
+        destination=trip.destination,
+        start_date=trip.start_date,
+        end_date=trip.end_date,
+        travelers=trip.travelers,
+        budget=trip.budget,
+        interests=trip.interests,
+        user_id=current_user.id,
+    )
+
+    db.add(new_trip)
+    db.commit()
+    db.refresh(new_trip)
+
+    return TripResponse(
+        id=new_trip.id,
+        user_id=new_trip.user_id,
+        destination=new_trip.destination,
+        start_date=new_trip.start_date,
+        end_date=new_trip.end_date,
+        travelers=new_trip.travelers,
+        budget=new_trip.budget,
+        interests=new_trip.interests,
+        days=days,
+    )
+
+
+# ============================================================
+# TRIPS - GET ALL CURRENT USER'S TRIPS
+# ============================================================
+
+@app.get(
+    "/trips",
+    response_model=list[TripResponse],
+)
+def get_trips(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user_trips = (
+        db.query(Trip)
+        .filter(Trip.user_id == current_user.id)
+        .all()
+    )
+
+    return [
+        TripResponse(
+            id=trip.id,
+            user_id=trip.user_id,
+            destination=trip.destination,
+            start_date=trip.start_date,
+            end_date=trip.end_date,
+            travelers=trip.travelers,
+            budget=trip.budget,
+            interests=trip.interests,
+            days=calculate_trip_days(
+                trip.start_date,
+                trip.end_date,
+            ),
+        )
+        for trip in user_trips
+    ]
+
+
+# ============================================================
+# TRIPS - GET ONE
+# ============================================================
+
+@app.get(
+    "/trips/{trip_id}",
+    response_model=TripResponse,
+)
+def get_trip(
+    trip_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    trip = (
+        db.query(Trip)
+        .filter(
+            Trip.id == trip_id,
+            Trip.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not trip:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trip not found",
+        )
+
+    return TripResponse(
+        id=trip.id,
+        user_id=trip.user_id,
+        destination=trip.destination,
+        start_date=trip.start_date,
+        end_date=trip.end_date,
+        travelers=trip.travelers,
+        budget=trip.budget,
+        interests=trip.interests,
+        days=calculate_trip_days(
+            trip.start_date,
+            trip.end_date,
+        ),
+    )
+
+
+# ============================================================
+# TRIPS - UPDATE
+# ============================================================
+
+@app.put(
+    "/trips/{trip_id}",
+    response_model=TripResponse,
+)
+def update_trip(
+    trip_id: int,
+    trip_update: TripCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    trip = (
+        db.query(Trip)
+        .filter(
+            Trip.id == trip_id,
+            Trip.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not trip:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trip not found",
+        )
+
+    # Check overlap with other trips belonging to this user
+    existing_trips = (
+        db.query(Trip)
+        .filter(
+            Trip.user_id == current_user.id,
+            Trip.id != trip_id,
+        )
+        .all()
+    )
+
+    for existing_trip in existing_trips:
+        if trips_overlap(
+            trip_update.start_date,
+            trip_update.end_date,
+            existing_trip.start_date,
+            existing_trip.end_date,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Trip dates overlap with an existing trip",
+            )
+
+    trip.destination = trip_update.destination
+    trip.start_date = trip_update.start_date
+    trip.end_date = trip_update.end_date
+    trip.travelers = trip_update.travelers
+    trip.budget = trip_update.budget
+    trip.interests = trip_update.interests
+
+    db.commit()
+    db.refresh(trip)
 
     days = calculate_trip_days(
         trip.start_date,
         trip.end_date,
     )
 
-    new_trip = TripResponse(
-        id=trip_id,
-        user_id=current_user["id"],
+    return TripResponse(
+        id=trip.id,
+        user_id=trip.user_id,
+        destination=trip.destination,
+        start_date=trip.start_date,
+        end_date=trip.end_date,
+        travelers=trip.travelers,
+        budget=trip.budget,
+        interests=trip.interests,
         days=days,
-        **trip.model_dump(),
-    )
-
-    trips.append(new_trip)
-
-    return new_trip
-
-
-# Get all trips - Protected
-@app.get("/trips", response_model=list[TripResponse])
-def get_trips(
-    current_user: dict = Depends(get_current_user),
-):
-    return [
-        trip
-        for trip in trips
-        if trip.user_id == current_user["id"]
-    ]
-
-
-# Get one trip - Protected
-@app.get("/trips/{trip_id}", response_model=TripResponse)
-def get_trip(
-    trip_id: int,
-    current_user: dict = Depends(get_current_user),
-):
-    for trip in trips:
-        if trip.id == trip_id:
-            if trip.user_id != current_user["id"]:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You do not have access to this trip",
-                )
-            return trip
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Trip not found",
     )
 
 
-# Update trip - Protected
-@app.put("/trips/{trip_id}", response_model=TripResponse)
-def update_trip(
-    trip_id: int,
-    trip_update: TripCreate,
-    current_user: dict = Depends(get_current_user),
-):
-    for index, trip in enumerate(trips):
-        if trip.id == trip_id:
-            if trip.user_id != current_user["id"]:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You do not have access to this trip",
-                )
-            days = calculate_trip_days(
-                trip_update.start_date,
-                trip_update.end_date,
-            )
+# ============================================================
+# TRIPS - DELETE
+# ============================================================
 
-            updated_trip = TripResponse(
-                id=trip_id,
-                user_id=current_user["id"],
-                days=days,
-                **trip_update.model_dump(),
-            )
-
-            trips[index] = updated_trip
-
-            return updated_trip
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Trip not found",
-    )
-
-
-# Delete trip - Protected
 @app.delete(
     "/trips/{trip_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def delete_trip(
     trip_id: int,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    for index, trip in enumerate(trips):
-        if trip.id == trip_id:
-            trips.pop(index)
-            return
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Trip not found",
+    trip = (
+        db.query(Trip)
+        .filter(
+            Trip.id == trip_id,
+            Trip.user_id == current_user.id,
+        )
+        .first()
     )
+
+    if not trip:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trip not found",
+        )
+
+    db.delete(trip)
+    db.commit()
+
+    return

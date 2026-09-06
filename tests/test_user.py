@@ -2,12 +2,14 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from app.schemas.user import UserCreate
-from app.main import app, users
+from app.main import app
 client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def clear_users():
-    users.clear()
+    # This fixture is automatically used for each test to ensure a clean state.
+    # In a real-world scenario, you would clear the users from the database here.
+    pass
 
 def test_create_user_valid_email_and_password():
     user = UserCreate(

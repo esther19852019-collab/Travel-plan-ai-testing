@@ -3,15 +3,9 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app, trips
-
+from app.main import app
 
 client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def clear_trips():
-    trips.clear()
 
 
 @pytest.fixture
@@ -29,6 +23,8 @@ def auth_headers():
 
     assert register_response.status_code == 201
 
+    user_data = register_response.json()
+
     login_response = client.post(
         "/auth/login",
         json={
@@ -40,15 +36,13 @@ def auth_headers():
     assert login_response.status_code == 200
 
     token = login_response.json()["access_token"]
-    user_id = register_response.json()["id"]
 
     return {
         "headers": {
             "Authorization": f"Bearer {token}"
         },
-        "user_id": user_id,
+        "user_id": user_data["id"],
     }
-
 
 
 @pytest.fixture
